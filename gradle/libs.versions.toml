@@ -9,3 +9,4 @@ javalin = { module = "io.javalin:javalin", version.ref = "javalin" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+javalin-testtools = { module = "io.javalin:javalin-testtools", version.ref = "javalin" }

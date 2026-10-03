@@ -26,7 +26,7 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Build and test
+      - name: Build, test and check coverage
         run: ./gradlew build
 
       - name: Upload packaged app
@@ -34,3 +34,12 @@ jobs:
         with:
           name: task-manager-app
           path: app/build/distributions/
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-and-coverage-reports
+          path: |
+            app/build/reports/tests/test/
+            app/build/reports/jacoco/test/html/
