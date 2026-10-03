@@ -1,6 +1,7 @@
 package com.codealpha.app;
 
 import org.junit.jupiter.api.Test;
+import java.util.NoSuchElementException;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AppTest {
@@ -31,5 +32,34 @@ class AppTest {
     void titleIsTrimmed() {
         TaskService service = new TaskService();
         assertEquals("Buy milk", service.addTask("  Buy milk  ").title());
+    }
+
+    @Test
+    void tooLongTitleIsRejected() {
+        TaskService service = new TaskService();
+        assertThrows(IllegalArgumentException.class, () -> service.addTask("a".repeat(201)));
+    }
+
+    @Test
+    void setDoneMarksTaskAsDone() {
+        TaskService service = new TaskService();
+        Task task = service.addTask("Finish polish");
+        assertTrue(service.setDone(task.id(), true).done());
+        assertTrue(service.getAllTasks().get(0).done());
+    }
+
+    @Test
+    void deleteRemovesTask() {
+        TaskService service = new TaskService();
+        Task task = service.addTask("Temporary");
+        service.deleteTask(task.id());
+        assertTrue(service.getAllTasks().isEmpty());
+    }
+
+    @Test
+    void unknownIdThrowsNotFound() {
+        TaskService service = new TaskService();
+        assertThrows(NoSuchElementException.class, () -> service.setDone(99, true));
+        assertThrows(NoSuchElementException.class, () -> service.deleteTask(99));
     }
 }

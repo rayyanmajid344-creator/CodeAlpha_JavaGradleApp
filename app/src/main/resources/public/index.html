@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #FBFCFE; --grid: #E3E8F2; --ink: #1F3A93; --text: #1E2433;
+      --muted: #5A6478; --done: #2E7D5B; --danger: #C2412D; --field: #FFFFFF;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #0F1A33; --grid: #1C2A4A; --ink: #8FB0FF; --text: #E8EEFA;
+        --muted: #9AA6C0; --done: #5FD3A0; --danger: #FF8A73; --field: #15223F;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--text);
+      font-family: "Bricolage Grotesque", system-ui, "Segoe UI", sans-serif;
+      font-size: 17px; line-height: 1.5;
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    main { max-width: 560px; margin: 0 auto; padding: 64px 20px; }
+    h1 {
+      font-size: clamp(44px, 10vw, 64px); font-weight: 800; line-height: 1;
+      letter-spacing: -0.02em; color: var(--ink); margin: 0 0 8px;
+    }
+    .summary { color: var(--muted); margin: 0 0 32px; }
+    form { display: flex; gap: 8px; margin-bottom: 8px; }
+    input[type=text] {
+      flex: 1; min-width: 0; font: inherit; padding: 12px 14px;
+      border: 2px solid var(--ink); border-radius: 6px;
+      background: var(--field); color: var(--text);
+    }
+    button { font: inherit; cursor: pointer; }
+    .add {
+      padding: 12px 20px; border: 2px solid var(--ink); border-radius: 6px;
+      background: var(--ink); color: var(--paper); font-weight: 600;
+    }
+    .error { color: var(--danger); min-height: 1.5em; margin: 0 0 16px; }
+    ul { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--ink); }
+    li {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 4px; border-bottom: 1px solid var(--grid); background: var(--paper);
+    }
+    li input { width: 20px; height: 20px; accent-color: var(--done); cursor: pointer; flex-shrink: 0; }
+    .title { flex: 1; overflow-wrap: anywhere; transition: color .2s; }
+    li.done .title {
+      color: var(--muted); text-decoration: line-through;
+      text-decoration-color: var(--done); text-decoration-thickness: 2px;
+    }
+    .delete { border: none; background: none; color: var(--muted); padding: 4px 8px; border-radius: 4px; }
+    .delete:hover { color: var(--danger); }
+    .empty { color: var(--muted); }
+    .filters { display: flex; gap: 4px; margin-top: 20px; }
+    .filters button { border: none; background: none; color: var(--muted); padding: 6px 10px; border-radius: 4px; }
+    .filters button[aria-pressed="true"] {
+      color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 4px;
+    }
+    :focus-visible { outline: 3px solid var(--done); outline-offset: 2px; }
+    .visually-hidden {
+      position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Tasks</h1>
+    <p class="summary" id="summary">Loading…</p>
+
+    <form id="add-form">
+      <label for="new-title" class="visually-hidden">New task</label>
+      <input type="text" id="new-title" placeholder="What needs doing?" maxlength="200" autocomplete="off">
+      <button type="submit" class="add">Add task</button>
+    </form>
+    <p class="error" id="error" role="alert"></p>
+
+    <ul id="list"></ul>
+
+    <div class="filters" role="group" aria-label="Show tasks">
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="open" aria-pressed="false">Open</button>
+      <button type="button" data-filter="done" aria-pressed="false">Done</button>
+    </div>
+  </main>
+
+  <script>
+    const list = document.getElementById('list');
+    const summary = document.getElementById('summary');
+    const errorBox = document.getElementById('error');
+    const input = document.getElementById('new-title');
+    let tasks = [];
+    let filter = 'all';
+
+    async function api(method, path, body) {
+      const res = await fetch(path, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
+      return res.status === 204 ? null : res.json();
+    }
+
+    function showError(message) { errorBox.textContent = message; }
+    function clearError() { errorBox.textContent = ''; }
+
+    function render() {
+      const open = tasks.filter(t => !t.done).length;
+      const done = tasks.length - open;
+      summary.textContent = tasks.length === 0 ? 'Nothing here yet.' : `${open} open, ${done} done`;
+
+      const visible = tasks.filter(t =>
+        filter === 'all' || (filter === 'done' ? t.done : !t.done));
+
+      list.replaceChildren();
+      if (visible.length === 0) {
+        const li = document.createElement('li');
+        li.className = 'empty';
+        if (filter === 'done') li.textContent = 'No finished tasks yet.';
+        else if (filter === 'open' && tasks.length > 0) li.textContent = 'Everything is done.';
+        else li.textContent = 'Add a task above to get started.';
+        list.append(li);
+        return;
+      }
+
+      for (const task of visible) {
+        const li = document.createElement('li');
+        if (task.done) li.classList.add('done');
+
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = task.done;
+        box.setAttribute('aria-label', `Mark "${task.title}" as done`);
+        box.addEventListener('change', () => update(task.id, box.checked));
+
+        const title = document.createElement('span');
+        title.className = 'title';
+        title.textContent = task.title;
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'delete';
+        del.textContent = 'Delete';
+        del.setAttribute('aria-label', `Delete "${task.title}"`);
+        del.addEventListener('click', () => remove(task.id));
+
+        li.append(box, title, del);
+        list.append(li);
+      }
+    }
+
+    async function load() {
+      try {
+        tasks = await api('GET', '/api/tasks');
+        render();
+      } catch (e) {
+        summary.textContent = '';
+        showError('Could not load tasks. Check that the server is running.');
+      }
+    }
+
+    async function update(id, done) {
+      try {
+        const updated = await api('PATCH', `/api/tasks/${id}`, { done });
+        tasks = tasks.map(t => t.id === id ? updated : t);
+        clearError();
+      } catch (e) {
+        showError(e.message);
+      }
+      render();
+    }
+
+    async function remove(id) {
+      try {
+        await api('DELETE', `/api/tasks/${id}`);
+        tasks = tasks.filter(t => t.id !== id);
+        clearError();
+        render();
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    document.getElementById('add-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        const task = await api('POST', '/api/tasks', { title: input.value });
+        tasks.push(task);
+        input.value = '';
+        clearError();
+        render();
+      } catch (e) {
+        showError(e.message);
+      }
+      input.focus();
+    });
+
+    document.querySelectorAll('.filters button').forEach(button => {
+      button.addEventListener('click', () => {
+        filter = button.dataset.filter;
+        document.querySelectorAll('.filters button').forEach(b =>
+          b.setAttribute('aria-pressed', String(b === button)));
+        render();
+      });
+    });
+
+    load();
+  </script>
+</body>
+</html>
