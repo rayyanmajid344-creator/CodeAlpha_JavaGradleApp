@@ -43,3 +43,56 @@ jobs:
           path: |
             app/build/reports/tests/test/
             app/build/reports/jacoco/test/html/
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          CSV=app/build/reports/jacoco/test/jacocoTestReport.csv
+          if [ -f "$CSV" ]; then
+            {
+              echo "## Test coverage"
+              echo ""
+              echo "| Class | Line coverage |"
+              echo "|---|---|"
+              awk -F, 'NR>1 { m=$8; c=$9; t=m+c; pct = t ? int(c*100/t) : 100; printf "| %s | %d%% (%d of %d lines) |\n", $3, pct, c, t; tm+=m; tc+=c } END { tt=tm+tc; printf "| **Total** | **%d%%** (%d of %d lines) |\n", (tt ? int(tc*100/tt) : 100), tc, tt }' "$CSV"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  docker:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
